@@ -1,0 +1,15 @@
+# Rahasia: JANGAN pernah di-commit.
+.env
+.env.*
+!.env.example
+
+# Dependensi dan hasil build.
+node_modules/
+vendor/
+dist/
+
+# Editor / OS.
+.idea/
+.vscode/
+.DS_Store
+*.log
