@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1
+
+# BONUS: FrankenPHP sebagai server aplikasi (menggantikan "php artisan serve").
+# Versi dikunci: FrankenPHP seri 1 + PHP 8.4 (bukan tag yang mengambang).
+FROM dunglas/frankenphp:1-php8.4
+
+# install-php-extensions sudah tersedia di image dasar FrankenPHP.
+RUN install-php-extensions pdo_mysql zip
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Folder kerja bawaan image FrankenPHP adalah /app.
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+RUN composer install \
+        --no-dev \
+        --no-scripts \
+        --no-autoloader \
+        --prefer-dist \
+        --no-interaction
+
+COPY . .
+COPY Caddyfile /etc/caddy/Caddyfile
+
+RUN composer dump-autoload --optimize --no-dev \
+    && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
+
+EXPOSE 8000
+
+# Tidak ada nilai rahasia di sini; semuanya dari environment.
+CMD ["sh", "-c", "php artisan migrate --force && php artisan db:seed --force && exec frankenphp run --config /etc/caddy/Caddyfile --adapter caddyfile"]
