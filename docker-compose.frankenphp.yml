@@ -1,0 +1,16 @@
+# BONUS: ganti server backend menjadi FrankenPHP.
+# Jalankan dengan:
+#   docker compose -f docker-compose.yml -f docker-compose.frankenphp.yml up -d --build
+# Service db dan frontend tidak berubah; hanya backend yang diganti.
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.frankenphp
+    healthcheck:
+      # Image FrankenPHP berbasis Debian; cukup memakai PHP untuk memeriksa /up.
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8000/up') === false ? 1 : 0);"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s

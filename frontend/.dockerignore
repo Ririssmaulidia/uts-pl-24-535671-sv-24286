@@ -1,0 +1,13 @@
+# Dipasang ulang di dalam image lewat "npm ci", tidak boleh ikut disalin.
+node_modules
+# Hasil build dibuat di dalam image.
+dist
+# Rahasia dan berkas pengembangan lokal.
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+*.log
+Dockerfile
+.dockerignore
