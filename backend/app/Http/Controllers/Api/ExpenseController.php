@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Expense;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class ExpenseController extends Controller
@@ -25,9 +26,7 @@ class ExpenseController extends Controller
     /** Tampilkan satu pengeluaran. */
     public function show(Request $request, string $id): JsonResponse
     {
-        $expense = $request->user()->expenses()->findOrFail($id);
-
-        return response()->json(['data' => $expense]);
+        return response()->json(['data' => $this->findOwned($request, $id, 'show')]);
     }
 
     /** Tambah pengeluaran baru (201 Created). */
@@ -36,6 +35,14 @@ class ExpenseController extends Controller
         $validated = $request->validate($this->rules());
 
         $expense = $request->user()->expenses()->create($validated);
+
+        // Hanya pengenal dan kategori. Judul, jumlah, dan catatan sengaja tidak dicatat.
+        Log::info('Pengeluaran disimpan', [
+            'event' => 'expense.created',
+            'user_id' => $request->user()->id,
+            'expense_id' => $expense->id,
+            'category' => $expense->category,
+        ]);
 
         return response()->json([
             'message' => 'Pengeluaran berhasil ditambahkan.',
@@ -46,9 +53,15 @@ class ExpenseController extends Controller
     /** Ubah pengeluaran. */
     public function update(Request $request, string $id): JsonResponse
     {
-        $expense = $request->user()->expenses()->findOrFail($id);
+        $expense = $this->findOwned($request, $id, 'update');
 
         $expense->update($request->validate($this->rules()));
+
+        Log::info('Pengeluaran diubah', [
+            'event' => 'expense.updated',
+            'user_id' => $request->user()->id,
+            'expense_id' => $expense->id,
+        ]);
 
         return response()->json([
             'message' => 'Pengeluaran berhasil diubah.',
@@ -59,9 +72,40 @@ class ExpenseController extends Controller
     /** Hapus pengeluaran. */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $request->user()->expenses()->findOrFail($id)->delete();
+        $expense = $this->findOwned($request, $id, 'destroy');
+        $expense->delete();
+
+        Log::info('Pengeluaran dihapus', [
+            'event' => 'expense.deleted',
+            'user_id' => $request->user()->id,
+            'expense_id' => (int) $id,
+        ]);
 
         return response()->json(['message' => 'Pengeluaran berhasil dihapus.']);
+    }
+
+    /**
+     * Mencari pengeluaran HANYA di antara milik pengguna yang login.
+     * Bila tidak ada (atau milik orang lain), dicatat sebagai peringatan
+     * karena bisa menandakan percobaan mengakses data orang lain.
+     */
+    private function findOwned(Request $request, string $id, string $action): Expense
+    {
+        $expense = $request->user()->expenses()->find($id);
+
+        if (! $expense) {
+            Log::warning('Pengeluaran tidak ditemukan atau bukan milik pengguna', [
+                'event' => 'expense.not_found',
+                'user_id' => $request->user()->id,
+                'action' => $action,
+                'expense_id' => (int) $id,
+                'reason' => 'not_found_or_not_owned',
+            ]);
+
+            abort(404, 'Pengeluaran tidak ditemukan.');
+        }
+
+        return $expense;
     }
 
     /** @return array<string, array<int, mixed>> */

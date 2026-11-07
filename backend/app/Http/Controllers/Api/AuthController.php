@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
@@ -19,11 +20,34 @@ class AuthController extends Controller
 
         $user = User::where('email', $credentials['email'])->first();
 
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+        // Email dan password TIDAK dimasukkan ke log. Untuk akun yang ada, yang
+        // dicatat hanya user_id; untuk akun yang tidak dikenal, tidak ada pengenal.
+        if (! $user) {
+            Log::warning('Login gagal: akun tidak dikenal', [
+                'event' => 'auth.login.failed',
+                'user_id' => null,
+                'reason' => 'unknown_account',
+            ]);
+
+            return response()->json(['message' => 'Email atau password salah.'], 401);
+        }
+
+        if (! Hash::check($credentials['password'], $user->password)) {
+            Log::warning('Login gagal: kata sandi salah', [
+                'event' => 'auth.login.failed',
+                'user_id' => $user->id,
+                'reason' => 'wrong_password',
+            ]);
+
             return response()->json(['message' => 'Email atau password salah.'], 401);
         }
 
         $token = $user->createToken('vue-frontend')->plainTextToken;
+
+        Log::info('Login berhasil', [
+            'event' => 'auth.login.succeeded',
+            'user_id' => $user->id,
+        ]);
 
         return response()->json([
             'message' => 'Login berhasil.',
@@ -40,6 +64,11 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()->delete();
+
+        Log::info('Logout berhasil', [
+            'event' => 'auth.logout',
+            'user_id' => $request->user()->id,
+        ]);
 
         return response()->json(['message' => 'Logout berhasil.']);
     }

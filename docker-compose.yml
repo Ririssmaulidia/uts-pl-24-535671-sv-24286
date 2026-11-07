@@ -1,10 +1,21 @@
 name: uts-pl
 
+# Pembatasan ukuran log (soal 6). Tanpa ini, log container tumbuh tanpa batas
+# dan bisa memenuhi disk. Dengan max-size 10m dan max-file 3, tiap container
+# menyimpan paling banyak 3 berkas log @ 10 MB (sekitar 30 MB), berkas tertua
+# dibuang otomatis (rotasi).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ── 1. Basis data ────────────────────────────────────────
   db:
     image: mysql:8.4
     restart: unless-stopped
+    logging: *default-logging
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:?Buat file .env dari .env.example}
       MYSQL_USER: ${DB_USERNAME:?Buat file .env dari .env.example}
@@ -25,13 +36,18 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    logging: *default-logging
     environment:
       APP_NAME: "Catatan Pengeluaran"
       APP_ENV: production
       APP_DEBUG: "false"
       APP_KEY: ${APP_KEY:?Isi APP_KEY di file .env (lihat .env.example)}
       APP_URL: http://localhost:${FRONTEND_PORT:-8080}
-      LOG_CHANNEL: stderr
+      # Log Laravel keluar ke STDOUT (channel "stdout" di config/logging.php),
+      # bukan ke berkas storage/logs di dalam container, sehingga terbaca lewat
+      # "docker compose logs backend". Formatnya JSON satu baris per catatan.
+      LOG_CHANNEL: stdout
+      LOG_LEVEL: info
       # Terhubung ke basis data lewat NAMA SERVICE "db", bukan alamat IP.
       DB_CONNECTION: mysql
       DB_HOST: db
@@ -51,11 +67,13 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8000/up || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
+      # /health benar-benar memeriksa basis data dan cache. Bila membalas 503,
+      # wget keluar dengan kode non-nol sehingga Docker menandai: unhealthy.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8000/health || exit 1"]
+      interval: 10s       # periksa tiap 10 detik
+      timeout: 5s         # satu pemeriksaan dianggap gagal bila lebih dari 5 detik
+      retries: 3          # unhealthy setelah 3 kegagalan BERUTURUT-TURUT
+      start_period: 40s   # masa tenggang: migration + seeder + server menyala
 
   # ── 3. Frontend Vue (Nginx) ──────────────────────────────
   frontend:
@@ -66,11 +84,18 @@ services:
         # meneruskannya ke service "backend".
         VITE_API_URL: /api
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${FRONTEND_PORT:-8080}:80"
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   db_data:
