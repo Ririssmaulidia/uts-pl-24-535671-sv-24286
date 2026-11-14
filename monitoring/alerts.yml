@@ -1,0 +1,12 @@
+groups:
+  - name: layanan
+    rules:
+      - alert: LayananMati
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Target {{ $labels.job }} tidak bisa di-scrape"
+          description: "{{ $labels.job }} ({{ $labels.instance }}) mati lebih dari 1 menit."
+          tindakan_pertama: "Jalankan 'docker compose ps -a' untuk melihat container yang Exited, lalu 'docker compose logs <layanan> --tail 30' untuk mencari sebabnya."
